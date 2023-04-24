@@ -1,13 +1,26 @@
 # manual-oauth2-proxy-sidecar-injection
 
-This repository provides quick instructions on how to manually inject oauth2-proxy sidecar into a pod or a deployment. There are plenty of ways to do this but this is to show someone how they can do this while waiting to use a mutatingwebhook provided by the kubernetes cluster administrators .  
+This repository provides quick instructions on how to manually inject oauth-proxy sidecar into a pod or a deployment. There are plenty of ways to do this but this is to show a tenant on a shared multitenant OpenShift (or kubernetes) cluster who needs to enable authentication for their deployed application how they can leverage oauthproxy to make things easier and faster for themselves.  
 
-We will cover two oauth2-proxy providers keycloak and openshift. For more information about oauth2-proxy refer to the [oauth2-proxy doc](https://github.com/oauth2-proxy/oauth2-proxy).   
+For instance if the requirements to authenticate (authorization can be done in addition to this) is similar to what the platform requires (e.g. using the enterprise identity management solution laready integrated into the cluster), the tenant does not need to do an extensive and cumbersome integration with enterprise LDAP or other enterprise identity management to get this accomplished. The quickest way here would be to leverage the OpenShift oauthproxy, which already has the information and could be used and also make the process easier and simpler.
+
+For more complex use cases where the application needs either to use a different enterprise identity provider or more attributes from the configurated provider than what the oauthproxy server in OpenShift is willing or able to share, the applicaiton can be configured to use the platform configured keycloak (or RHSSO) to achieve this. Again here the application could use a keycloak oauthproxy to get this information once the proper provider is made available by the platform. 
+
+This configuration simplifies maintenance and enables sharing of cross cutting identity management concerns via the platform administrators instead of having each tenant standup their own integration to the entreprise identity solution. In addition this approach saves costs since instead of having several instances of keycloak deployed we are now using one central that is shared and leveraging sidecars, which are far less resource intensive .
+
+The oauthproxy sidecar solution is the best, efficient, faster and secure way to provide enterprise level identity to the applications. To properly do this at scale, shared multitenant kubernetes platforms like OpenShift use various automated ways to inject the sidecars into the various applications that need it. One of the ways to do this is to use a mutatingwebhook. So through the use of a policy engine one can easily manage this oauthproxy isidecar injection into the various applications that needs it. 
+
+When a policy engine is not readily available and tenants are not able to deploy mutatingwebhooks, they can still leverage the solution via self service approach that allows them to meet their enterprise authentication integration needs.  
+
+To achieve this, we will use Ansible and Jinja2 templating to enable provisioning and injecting of the sidecar configuration into the designated application. Each tenant should then be able to clone the provided playbook and run it to generate and patch their application(s) to augment its(their) deployment with the oautproxy sidecar.
+
+We will cover two oauth-proxy providers: keycloak and openshift.
+
 For more information about oauth2proxy refer to the [oauth2 proxy github page](https://github.com/oauth2-proxy/oauth2-proxy) and the [provider configuration page](https://oauth2-proxy.github.io/oauth2-proxy/docs/configuration/oauth_provider/).
 
-For more information about the keycloak oauth-proxy available configurations, refer to [keycloak provider page](https://oauth2-proxy.github.io/oauth2-proxy/docs/configuration/oauth_provider/#keycloak-auth-provider).   
+For more information about the keycloak oauth-proxy available configurations, refer to [keycloak provider page](https://oauth2-proxy.github.io/oauth2-proxy/docs/configuration/oauth_provider/#keycloak-auth-provider).
 
-For more information about the openshift oauth2-proxy provider refer to the [openshift oauth proxy github page](https://github.com/openshift/oauth-proxy) and the [openshift oauth proxy configuration page](https://github.com/openshift/oauth-proxy/tree/aad1b28fcf4b32d9ad592eee33e439bd575565a2#command-line-options).  
+For more information about the openshift oauth2-proxy provider refer to the [openshift oauth proxy github page](https://github.com/openshift/oauth-proxy) and the [openshift oauth proxy configuration page](https://github.com/openshift/oauth-proxy/tree/aad1b28fcf4b32d9ad592eee33e439bd575565a2#command-line-options).
 
 
 
