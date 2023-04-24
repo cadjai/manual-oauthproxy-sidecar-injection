@@ -1,0 +1,37 @@
+spec:
+  template:
+    spec:
+      containers:
+      - args:
+        - --provider=keycloak
+        - --client-id={{ keycloak_client_name }}
+        - --client-secret={{ keycloak_secret }}
+        - --login-url=https://{{ koa2p_login_url }}
+        - --redeem-url={{ koa2p_redeem_url }}
+        - --validate-url={{ koa2p_validate_url }}
+        - --profile-url={{ koa2p_profile_url }}
+        - --email-domain={{ keycloak_email_domain | default('*', true) }}
+        # cookie-secret can be generated using "python2.7 -c 'import os,base64; print base64.urlsafe_b64encode(os.urandom(16))'"
+        # and must then be base64 encoded
+        - --cookie-secret={{ koa2p_cookie_secret | default('0dSBdCNa2k1oOPl3eviZ0g==', true) }}
+        - --skip-provider-button={{ koa2p_provider_button | default('true', true) }}
+        - --http-address={{ koa2p_http_address | default('0.0.0.0:8080', true) }}
+        # upstream to forward to istio-proxy container
+        - --upstream={{ koa2p_upstream_address | default('http://127.0.0.1:8081', true) }}
+        # RHSSO certificate is self-signed 
+        # (better option: mount OCP ingress CA in the pod and use --provider-ca-file)
+        - --ssl-insecure-skip-verify
+        # auto-refresh the cookie every ~1h before it becomes expired
+        - --cookie-expire=1h
+        - --cookie-refresh=55m
+        - --scope=openid
+        image: {{ koa2p_image | default('quay.io/oauth2-proxy/oauth2-proxy:latest', true) }}
+        imagePullPolicy: Always
+        name: oauth2-proxy
+        ports:
+        - containerPort: {{ koa2p_http_port | default('8080', true) }}
+          name: oauth-http
+          protocol: TCP
+        resources: {}
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File

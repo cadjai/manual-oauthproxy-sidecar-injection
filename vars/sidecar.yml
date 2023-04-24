@@ -1,0 +1,11 @@
+---
+openshift_cli: '/usr/bin/oc'
+ocp_cluster_user: '{{ vault_ocp_cluster_user_user }}'
+ocp_cluster_user_password: '{{ vault_ocp_cluster_user_password }}'
+ocp_cluster_console_url: '{{ vault_ocp_cluster_console_url }}'
+ocp_cluster_console_port: '6443'
+ocp_cluster_user_token: '{{ vault_ocp_cluster_token }}'
+app_name: ''
+app_namespace: ''
+app_route: ''
+ocpoa2p_deploy_name: ''

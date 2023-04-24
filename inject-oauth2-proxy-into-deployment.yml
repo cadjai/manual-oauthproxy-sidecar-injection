@@ -1,0 +1,298 @@
+#!/usr/local/bin/ansible-playbook --inventory=inventory
+
+#############################################################################################
+#### This is a temporary  mean to help a tenant on a multi-tenant cluster to inject an oauth proxy
+#### (openshift or keycloak) into their deployment.
+#### Ideally when available the platform provider and administrator will provide a mutatingwebhook
+#### to help with this.
+################################################################################################
+
+- name: 'Inject openshift or keycloak oauthproxy into a deployment or pod'
+  hosts: localhost
+  become: yes
+  vars_files:
+    - 'vars/vault.yml'
+    - 'vars/sidecar.yml'
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+    module: "inject-oauth-proxy-into-deployment"
+    ansible_name_module: " Oauthproxy Injector | {{ module }}"
+    ocp_cluster_user: '{{ vault_ocp_cluster_user }}'
+    ocp_cluster_user_password: '{{ vault_ocp_cluster_user_password }}'
+    ocp_cluster_console_url: '{{ vault_ocp_cluster_console_url }}'
+    ocp_cluster_console_port: '6443'
+    openshift_cli: '/usr/bin/oc'
+
+  pre_tasks:
+    - name: '{{ ansible_name_module }} | Ensure required variables are set'
+      block:
+         - assert:
+             that:
+               - app_name is defined and app_name != ""
+             msg: " the app_name  must be set and valid "
+         - assert:
+             that:
+               - app_namespace is defined and app_namespace != ""
+             msg: " the app_namespace  must be set and valid "
+         - assert:
+             that:
+               - app_route is defined and app_route != ""
+             msg: " the app_route name  must be set and valid "
+
+    - name: '{{ ansible_name_module }} | Ensure required variables are set'
+      when:
+        - oap_provider is defined
+        - oap_provider == 'keycloak'
+      block:
+        - assert:
+            that:
+              - keycloak_client_name is defined and keycloak_client_name != ""
+            msg: " the keycloak_client_name  must be set and valid "
+        - assert:
+            that:
+              - keycloak_secret is defined and keycloak_secret != ""
+            msg: " the keycloak_secret  must be set and valid "
+        - assert:
+            that:
+              - keycloak_openid_issuer_url is defined and keycloak_openid_issuer_url != ""
+            msg: " the keycloak_openid_issuer_url must be set and valid "
+        - assert:
+            that:
+              - keycloak_realm_name is defined and keycloak_realm_name != ""
+            msg: " the keycloak_realm_name  must be set and valid "
+
+        - name: '{{ ansible_name_module }} | set_fact |  koa2p_login_url'
+          ansible.builtin.set_fact:
+            koa2p_login_url: '{{ keycloak_openid_issuer_url }}/auth/realms/{{ keycloak_realm_name }}/protocol/openid-connect/auth'
+          when:
+            - not koa2p_login_url is defined or koa2p_login_url == ''
+
+        - name: '{{ ansible_name_module }} | set_fact |  koa2p_redeem_url'
+          ansible.builtin.set_fact:
+            koa2p_redeem_url: '{{ keycloak_openid_issuer_url }}/auth/realms/{{ keycloak_realm_name }}/protocol/openid-connect/token'
+          when:
+            - not koa2p_redeem_url is defined or koa2p_redeem_url == ''
+
+        - name: '{{ ansible_name_module }} | set_fact |  koa2p_redirect_url'
+          ansible.builtin.set_fact:
+            koa2p_redirect_url: '{{ keycloak_openid_issuer_url }}/auth/realms/{{ keycloak_realm_name }}/protocol/openid-connect/userinfo'
+          when:
+            - not koa2p_redirect_url is defined or koa2p_redirect_url == ''
+
+        - name: '{{ ansible_name_module }} | set_fact |  koa2p_validate_url'
+          ansible.builtin.set_fact:
+            koa2p_validate_url: '{{ keycloak_openid_issuer_url }}/auth/realms/{{ keycloak_realm_name }}/protocol/openid-connect/userinfo'
+          when:
+            - not koa2p_validate_url is defined or koa2p_validate_url == ''
+
+        - name: '{{ ansible_name_module }} | set_fact |  koa2p_profile_url'
+          ansible.builtin.set_fact:
+            koa2p_profile_url: '{{ keycloak_openid_issuer_url }}/auth/realms/{{ keycloak_realm_name }}/protocol/openid-connect/userinfo'
+          when:
+            - not koa2p_profile_url is defined or koa2p_profile_url == ''
+
+    - name: '{{ ansible_name_module }} | Ensure required variables are set'
+      when:
+        - not oap_provider is defined or oap_provider == 'openshift' or oap_provider != 'keycloak'
+      block:
+        - assert:
+            that:
+              - app_name is defined and app_name != ""
+            msg: " the app_name  must be set and valid "
+        - assert:
+            that:
+              - app_namespace is defined and app_namespace != ""
+            msg: " the app_namespace  must be set and valid "
+
+        - name: '{{ ansible_name_module }} | set_fact |  oap_provider'
+          ansible.builtin.set_fact:
+            oap_provider: 'openshift'
+          when:
+            - not oap_provider is defined or oap_provider != 'keycloak'
+
+        - name: '{{ ansible_name_module }} | set_fact | ocpoa2p_cookie_secret_name '
+          ansible.builtin.set_fact:
+            ocpoa2p_cookie_secret_name: '{{ app_name }}-cookie-secret'
+          when:
+            - not ocpoa2p_cookie_secret_name is defined or ocpoa2p_cookie_secret_name == ''
+
+        - name: '{{ ansible_name_module }} | set_fact | ocpoa2p_service_account '
+          ansible.builtin.set_fact:
+            ocpoa2p_service_account: '{{ app_name }}-sa'
+          when:
+            - not ocpoa2p_service_account is defined or ocpoa2p_service_account == ''
+
+    - name: Validate required cluster login variables 1 of 3
+      assert:
+        that:
+          - ocp_cluster_console_url is defined and ocp_cluster_console_url != ''
+        msg: "The API URL for the cluster is required "
+
+    - name: Validate required cluster login variables 2 of 3
+      when:
+        - not ocp_cluster_user_token is defined or ocp_cluster_user_token == ''
+      block:
+        - assert:
+            that:
+              - ocp_cluster_user is defined and ocp_cluster_user != ''
+            msg: "The ocp_cluster_user for the cluster is required "
+        - assert:
+            that:
+              - ocp_cluster_user_password is defined and ocp_cluster_user_password != ''
+            msg: "The ocp_cluster_user_password for the cluster is required "
+
+
+    - name: '{{ ansible_name_module }} | Install required pip library'
+      pip:
+        name: openshift
+        state: present
+
+
+    - name: '{{ ansible_name_module }} | Authenticate with the API'
+      command: >
+        {{ openshift_cli }} login \
+          -u {{ ocp_cluster_user }} \
+          -p {{ ocp_cluster_user_password }} \
+          --insecure-skip-tls-verify=true {{ ocp_cluster_console_url }}:{{ ocp_cluster_console_port | d('6443', true) }}
+      register: login_out
+
+  tasks:
+    - name: '{{ ansible_name_module }} | shell | Create encrypted session cookies'
+      ansible.builtin.shell: >
+        head /dev/urandom | tr -dc A-Za-z0-9 | head -c32
+      register: session_cookies
+
+    - name: '{{ ansible_name_module }} | Inject Openshift oauthproxy'
+      when:
+        - oap_provider == 'openshift'
+      block:
+        - name: '{{ ansible_name_module }} | create cookie secret'
+          ansible.builtin.command: >
+            {{ openshift_cli }} create secret generic {{ ocpoa2p_cookie_secret_name }}  --from-literal=session-secret={{ session_cookies.stdout }} -n {{ app_namespace }}
+          when:
+            - session_cookies is defined
+            - session_cookies.stdout is defined
+            - session_cookies.stdout != ''
+          register: session_cookies_secret
+
+        - name: '{{ ansible_name_module }} | create service account'
+          ansible.builtin.command: >
+            {{ openshift_cli }} create serviceaccount  {{ ocpoa2p_service_account }} -n {{app_namespace }}
+          register: sa_created
+
+        - name: '{{ ansible_name_module }} | create service account'
+          ansible.builtin.command: >
+            {{ openshift_cli }} annotate serviceaccount {{ ocpoa2p_service_account }} -n {{app_namespace }} serviceaccounts.openshift.io/oauth-redirecturi.first='{"kind":"OAuthRedirectReference","apiVersion":"v1","reference":{"kind":"Route","name":"{{ app_route }}"}}'
+          register: sa_annotated
+
+        - name: '{{ ansible_name_module }} | template | Render oauth proxy Config '
+          ansible.builtin.set_fact:
+            ocp_oauthproxy: "{{ lookup('template', 'templates/ocp-oauth2-proxy.yaml.j2') }}"
+          register:  ocp_oauthproxy_rendered
+
+        - name: '{{ ansible_name_module }} | Print rendered oauth proxy config output'
+          ansible.builtin.debug:
+            var: ocp_oauthproxy
+            verbosity: 2
+
+        - name: '{{ ansible_name_module }} | oc:get | get deployment'
+          ansible.builtin.shell: >
+            {{ openshift_cli }} get deploy {{ app_deploy_name }} -n {{app_namespace }} --no-headers | awk '{print $1}' | head -n+1
+          ignore_errors: true
+          when:
+            - app_deploy_name is defined
+            - app_deploy_name != ''
+          register: deploy_located
+
+        - name: '{{ ansible_name_module }} | oc:get | get pod'
+          ansible.builtin.shell: >
+            {{ openshift_cli }} get pod -n {{app_namespace }} --no-headers | grep {{ app_name }} | egrep -i 'running' | awk '{print $1}' | head -n+1
+          ignore_errors: true
+          when:
+            - not app_deploy_name is defined or app_deploy_name == ''
+          register: pod_located
+
+        - name: '{{ ansible_name_module }} | oc:patch | patch deployment'
+          ansible.builtin.command: >
+            {{ openshift_cli }} patch deploy {{ deploy_located.stdout }} -n {{ app_namespace }} --patch '{{ ocp_oauthproxy }}'
+          when:
+            - app_deploy_name is defined
+            - deploy_located is defined
+            - deploy_located.rc is defined
+            - deploy_located.rc == 0
+            - deploy_located.stdout is defined
+            - deploy_located.stdout != ''
+          register: deployment_patched
+
+        - name: '{{ ansible_name_module }} | oc:patch | patch pod when deployment is not found'
+          ansible.builtin.command: >
+            {{ openshift_cli }} patch pod {{ pod_located.stdout }} -n {{ app_namespace }} --patch '{{ ocp_oauthproxy }}'
+          when:
+            - not app_deploy_name is defined
+            - deploy_located is defined
+            - deploy_located.rc is defined
+            - deploy_located.rc != 0
+            - pod_located is defined
+            - pod_located.rc is defined
+            - pod_located.rc == 0
+            - pod_located.stdout is defined
+            - pod_located.stdout != ''
+          register: pod_patched
+
+    - name: '{{ ansible_name_module }} | Inject Openshift oauthproxy'
+      when:
+        - oap_provider == 'keycloak'
+      block:
+        - name: '{{ ansible_name_module }} | template | Render oauth proxy Config '
+          ansible.builtin.set_fact:
+            keycloak_oauthproxy: "{{ lookup('template', 'templates/keycloak-oauth2-proxy.yaml.j2') }}"
+          register:  keycloak_oauthproxy_rendered
+
+        - name: '{{ ansible_name_module }} | Print rendered oauth proxy config output'
+          ansible.builtin.debug:
+            var: keycloak_oauthproxy
+            verbosity: 2
+
+        - name: '{{ ansible_name_module }} | oc:get | get deployment'
+          ansible.builtin.shell: >
+            {{ openshift_cli }} get deploy {{ app_deploy_name }} -n {{ app_namespace }} --no-headers | awk '{print $1}' | head -n+1
+          ignore_errors: true
+          when:
+            - app_deploy_name is defined
+            - app_deploy_name != ''
+          register: deploy_located
+
+        - name: '{{ ansible_name_module }} | oc:get | get pod'
+          ansible.builtin.shell: >
+            {{ openshift_cli }} get pod -n {{ app_namespace }} --no-headers | grep {{ app_name }} | egrep -i 'running' | awk '{print $1}' | head -n+1
+          ignore_errors: true
+          when:
+            - not app_deploy_name is defined or app_deploy_name == ''
+          register: pod_located
+
+        - name: '{{ ansible_name_module }} | oc:patch | patch deployment'
+          ansible.builtin.command: >
+            {{ openshift_cli }} patch deploy {{ deploy_located.stdout }} -n {{app_namespace }} --patch '{{ keycloak_oauthproxy }}'
+          when:
+            - app_deploy_name is defined
+            - deploy_located is defined
+            - deploy_located.rc is defined
+            - deploy_located.rc == 0
+            - deploy_located.stdout is defined
+            - deploy_located.stdout != ''
+          register: deployment_patched
+
+        - name: '{{ ansible_name_module }} | oc:patch | patch pod when deployment is not found'
+          ansible.builtin.command: >
+            {{ openshift_cli }} patch pod {{ pod_located.stdout }} -n {{app_namespace }} --patch '{{ keycloak_oauthproxy }}'
+          when:
+            - not app_deploy_name is defined
+            - deploy_located is defined
+            - deploy_located.rc is defined
+            - deploy_located.rc != 0
+            - pod_located is defined
+            - pod_located.rc is defined
+            - pod_located.rc == 0
+            - pod_located.stdout is defined
+            - pod_located.stdout != ''
+          register: pod_patched

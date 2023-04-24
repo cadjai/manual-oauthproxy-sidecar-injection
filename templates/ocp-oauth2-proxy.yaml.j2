@@ -1,0 +1,39 @@
+spec:
+  template:
+    spec:
+      volumes:
+        - name: cookie-secret
+          secret:
+            secretName: {{ ocpoa2p_cookie_secret_name }}
+            defaultMode: 420
+      containers:
+      - args:
+        - "-provider=openshift"
+        - "-cookie-secret-file=/secret/session-secret"
+        - "-http-address={{ ocpoa2p_http_address | default('0.0.0.0:4000', true) }}"
+        - "-https-address="
+        - "-upstream={{ ocpoa2p_upstream_address | default('http://127.0.0.1:8080', true) }}"
+        - "-scope={{ ocpoa2p_scopes | default('user:info user:check-access user:list-projects', true) }}"
+        - "-openshift-service-account={{ ocpoa2p_service_account }}"
+        - "-pass-access-token"
+        - "-skip-provider-button=true"
+        - >-
+          -openshift-sar={"namespace":"{{ app_namespace }}","resource":"pods","verb":"list"}
+        - "-openshift-ca={{ ocpoa2p_ca | default('/etc/pki/tls/cert.pem', true) }}"
+        - "-openshift-ca={{ ocpoa2p_ca | default('/var/run/secrets/kubernetes.io/serviceaccount/ca.crt', true) }}"
+        - "-openshift-ca={{ ocpoa2p_ca | default('/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem', true) }}"
+        - "-client-secret-file={{ ocpoa2p_client_secret_file | default('/var/run/secrets/kubernetes.io/serviceaccount/token', true) }}"
+        image: {{ ocpoa2p_image | default('registry.redhat.io/openshift4/ose-oauth-proxy@sha256:cb915bd0111e1cc1417a214fa6e013e3af9e1f6d9c4bcaeb71d8c84775a7f071', true) }}
+        imagePullPolicy: Always
+        name: oauth-proxy
+        ports:
+        - containerPort: {{ ocpoa2p_http_port | default('4000', true) }}
+          name: oauth-http
+          protocol: TCP
+        resources: {}
+        volumeMounts:
+        - name: cookie-secret
+          mountPath: /secret
+          readOnly: true
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
