@@ -195,6 +195,10 @@
             var: ocp_oauthproxy
             verbosity: 2
 
+        - name: '{{ ansible_name_module }} | shell:echo | write oauth config to file'
+          ansible.builtin.shell: >
+            echo -e "{{ ocp_oauthproxy }}" > /tmp/{{ app_name }}-ocp-oauth2-proxy.yaml
+
         - name: '{{ ansible_name_module }} | oc:get | get deployment'
           ansible.builtin.shell: >
             {{ openshift_cli }} get deploy {{ app_deploy_name }} -n {{app_namespace }} --no-headers | awk '{print $1}' | head -n+1
@@ -252,6 +256,10 @@
           ansible.builtin.debug:
             var: keycloak_oauthproxy
             verbosity: 2
+
+        - name: '{{ ansible_name_module }} | shell:echo | write oauth config to file'
+          ansible.builtin.shell: >
+            echo -e "{{ keycloak_oauthproxy }}" > /tmp/{{ app_name }}-keycloak-oauth2-proxy.yaml
 
         - name: '{{ ansible_name_module }} | oc:get | get deployment'
           ansible.builtin.shell: >
