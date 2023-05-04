@@ -95,7 +95,7 @@ Any variable prefixed with `ocpoa2p_` is related to the openshift oauth2-proxy p
 
 
 The following variables are used for the cluster in either case:
-- ocp_cluster_user: The username of the cluster-admin user to use to run this playbook.
+- ocp_cluster_user: The username of the cluster user to use to run this playbook. This user only needs edit permissions in the namespace in order to be able create things like service accounts, secrets and patch various objects in that namespace.
 - ocp_cluster_user_password: The password associated with the username above.
 - ocp_cluster_console_url: The URL to the API for the cluster this will be deployed to.
 - ocp_cluster_console_port: The API port for the cluster this will be deployed to. Default to 6443 when not set.
